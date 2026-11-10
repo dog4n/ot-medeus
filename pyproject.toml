@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ot-medeus"
+version = "0.4.1"
+description = "Kurumsal OT / ICS / BMS keşif ve envanter motoru (yalnızca yetkili kullanım)"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = []   # çekirdek sadece Python standart kütüphanesi
+
+[project.optional-dependencies]
+passive = ["scapy>=2.5.0"]   # iç ağ ARP keşfi ve pasif dinleme için
+
+[project.scripts]
+ot-medeus = "ot_medeus.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["ot_medeus*"]

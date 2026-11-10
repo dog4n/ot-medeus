@@ -1,0 +1,3 @@
+# Çekirdek motor yalnızca Python 3 standart kütüphanesini kullanır.
+# scapy sadece iç ağ ARP keşfi ve pasif dinleme için gereklidir (opsiyonel).
+scapy>=2.5.0
