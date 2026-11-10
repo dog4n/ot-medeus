@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# Tarama çıktıları ve veritabanları — müşteri verisi, ASLA repoya girmez
+workspaces/
+*.db
+*.sqlite
+
+# Büyük / indirilebilir veri
+oui.csv
+nmap-mac-prefixes
+
+# Gizli bilgiler
+.env
+*.key
+
+# macOS
+.DS_Store
