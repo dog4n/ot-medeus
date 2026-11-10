@@ -3,6 +3,13 @@
 **Son güncelleme:** 10.11.2026 · **Kod sürümü:** 0.4.1 + K1–K3 düzeltmeleri
 **Repo:** https://github.com/dog4n/ot-medeus (özel, Claude'a bağlı) · **Mac kopyası:** ~/Documents/ot-medeus (git klonu değil; değişiklikler elle senkronlanıyor)
 
+## Kurulumlar
+- **Bulut sunucu** (ubuntu@158.180.23.35, Ubuntu 20.04, Python 3.8): `~/ot-medeus` = repo klonu,
+  salt okunur deploy key ile (`~/.ssh/ot_medeus_deploy`, ssh host takma adı `github-ot-medeus`).
+  Güncelleme: `cd ~/ot-medeus && git pull && bash install.sh`. Eski elle kopyalanmış sürüm
+  (v0.4.0) `~/ot-medeus-eski-20261110-1208` altında yedekte; ihtiyaç yoksa silinebilir.
+  Buluttan yalnızca `external` akışı anlamlı (iç ağ akışları hedef ağın içinden çalışmalı).
+
 ## Nerede kaldık
 - Teşhis: 14 bulgu (aşağıda). `tests/test_teshis.py`: 19 test → **11 yeşil, 8 kırmızı**.
   Kırmızı = bulgu hâlâ açık (B1, Y1–Y4).
