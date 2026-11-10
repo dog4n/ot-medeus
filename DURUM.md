@@ -1,6 +1,7 @@
 # DURUM — Devir Notu
 
 **Son güncelleme:** 10.11.2026 · **Kod sürümü:** 0.4.1 (Downloads/ot-medeus.zip, 3 Kasım)
+**Repo:** https://github.com/dog4n/ot-medeus (özel) · **Yerel kopya:** ~/Documents/ot-medeus (henüz git klonu değil)
 
 ## Nerede kaldık
 - Proje 10.11.2026'da yeniden ele alındı. **Kod henüz değiştirilmedi.**
@@ -30,7 +31,7 @@
 1. **Kapsam (K2):** OSINT'ten bulunan IP'ler aktif taransın mı? Öneri: varsayılan sadece listele; `--scan-discovered` gibi açık bir bayrakla tara.
 2. **CVE kaynağı (Y5):** NVD API 2.0, CIRCL Vulnerability-Lookup'un yeni API'si ya da çevrimdışı veri.
 3. **Diff kapsamı (O3):** workspace bazında mı, workspace + akış + hedef bazında mı?
-4. **Sürüm kontrolü:** Proje git'e (özel GitHub reposu) alınsın mı? Düzeltmelere başlamadan önerilir.
+4. ~~Sürüm kontrolü~~ — tamam: özel repo açıldı (10.11.2026). Kalan: GitHub'ı Claude'a bağlamak (claude.ai ayarları) ki düzeltmeler doğrudan commit/push edilebilsin.
 
 ## Sıradaki işler
 1. K1–K3 (güvenlik) düzelt → ilgili testler yeşile dönsün.
