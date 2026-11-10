@@ -63,6 +63,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--fofa-key", help="FOFA API anahtarı")
     p.add_argument("--passive-only", action="store_true",
                    help="Dış ağda aktif paket gönderme; sadece OSINT")
+    p.add_argument("--scan-discovered", action="store_true",
+                   help="crt.sh/Censys/FOFA ile BULUNAN IP'leri de aktif tara. Varsayılan: "
+                        "yalnızca listelenir. Bu IP'ler CDN/SaaS sağlayıcılarına ait olabilir; "
+                        "sadece hepsi için yazılı izniniz varsa kullanın.")
     p.add_argument("--out", default="workspaces", help="Çıktı kök dizini")
     return p
 
@@ -92,18 +96,26 @@ def main(argv: list[str] | None = None) -> int:
     if args.fofa_email and args.fofa_key:
         osint_creds.update(fofa_email=args.fofa_email, fofa_key=args.fofa_key)
 
-    result = run_workflow(
-        args.workspace, args.workflow,
-        targets=targets, domain=args.domain, interface=args.interface,
-        duration=args.duration, profile_name=args.profile, passive_only=args.passive_only,
-        engine=args.engine, nmap_udp=args.nmap_udp,
-        enrich=args.enrich, cve_online=not args.offline,
-        osint_creds=osint_creds or None,
-    )
+    try:
+        result = run_workflow(
+            args.workspace, args.workflow,
+            targets=targets, domain=args.domain, interface=args.interface,
+            duration=args.duration, profile_name=args.profile, passive_only=args.passive_only,
+            engine=args.engine, nmap_udp=args.nmap_udp,
+            enrich=args.enrich, cve_online=not args.offline,
+            osint_creds=osint_creds or None, scan_discovered=args.scan_discovered,
+        )
+    except ValueError as e:
+        print(f"[!] {e}", file=sys.stderr)
+        return 2
     for note in result.parameters.get("notes", []):
         print(f"    [i] {note}")
     print(f"    [+] Tamamlandı: {len(result.ot_hosts())} OT/BMS adayı / "
           f"{result.total_scanned} hedef tarandı.")
+    if result.candidates:
+        scanned = sum(1 for c in result.candidates if c["scanned"])
+        print(f"    [+] Keşfedilen IP: {len(result.candidates)} "
+              f"(taranan: {scanned}, yalnızca listelenen: {len(result.candidates) - scanned})")
 
     store = Store(ws_dir / "ot_medeus.db")
     scan_id = store.save_scan(result)

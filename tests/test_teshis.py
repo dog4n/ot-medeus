@@ -74,8 +74,20 @@ def _raw_server(reply: bytes, port: int = 0):
                 pass
             c.close()
 
-    threading.Thread(target=loop, daemon=True).start()
-    return s, s.getsockname()[1], hits
+    t = threading.Thread(target=loop, daemon=True)
+    t.start()
+
+    class _Closer:
+        """close(): accept'te bekleyen thread'i uyandırıp portu hemen serbest bırakır."""
+        def close(self):
+            try:
+                s.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            s.close()
+            t.join(timeout=2)
+
+    return _Closer(), s.getsockname()[1], hits
 
 
 # ------------------------------------------------------------- KRİTİK bulgular
@@ -93,18 +105,86 @@ class K1_PasifProfil(unittest.TestCase):
         srv.close()
         self.assertEqual(len(hits), 0, "passive profil hedefe TCP bağlantısı açtı")
 
+    def test_passive_profil_ile_ic_ag_aktif_tarama_reddedilir(self):
+        for wf in ("internal-active", "full"):
+            with self.subTest(workflow=wf), self.assertRaises(ValueError):
+                run_workflow("test", wf, targets=["127.0.0.1/32"],
+                             profile_name="passive", enrich=False)
+
+
+def _fake_resolve(ip="192.0.2.1"):
+    """crt.sh testlerinde gerçek DNS'e çıkmamak için gethostbyname_ex taklidi."""
+    return mock.patch.object(ext.socket, "gethostbyname_ex",
+                             side_effect=lambda name: (name, [], [ip]))
+
 
 class K2_Kapsam(unittest.TestCase):
-    """K2: crt.sh'tan gelen isimler yalnızca hedef domainin alt alanları olmalı."""
+    """K2: Kullanıcının vermediği IP'ler aktif taranmaz; 'aday' olarak listelenir."""
 
     def test_benzer_isimli_baska_domain_alinmaz(self):
         fake = [{"name_value": "vpn.kurum.com.tr\nnotkurum.com.tr\nx.evilkurum.com.tr"}]
         resp = mock.MagicMock()
         resp.__enter__.return_value.read.return_value = json.dumps(fake).encode()
-        with mock.patch.object(ext.urllib.request, "urlopen", return_value=resp), \
-             mock.patch.object(ext.socket, "gethostbyname", return_value="192.0.2.1"):
+        with mock.patch.object(ext.urllib.request, "urlopen", return_value=resp), _fake_resolve():
             subs = ext.fetch_crt_sh_subdomains("kurum.com.tr")
         self.assertEqual(sorted(subs), ["vpn.kurum.com.tr"])
+
+    def _run_with_discovery(self, *, targets, scan_discovered=False, osint=None,
+                            subs=None):
+        """127.0.0.1:44818'i dinleyip keşif kaynaklarını mock'layarak external akışı çalıştırır."""
+        try:
+            srv, _, hits = _raw_server(b"", port=44818)
+        except OSError:
+            self.skipTest("44818 portu bu makinede kullanılamıyor")
+        subs = subs if subs is not None else {
+            "www.kurum.com.tr": {"ip": "127.0.0.1", "canonical": "www.kurum.com.tr.cdn.cloudflare.net",
+                                 "ot_keyword_match": False}}
+        patches = [mock.patch.object(ext, "fetch_crt_sh_subdomains", return_value=subs),
+                   mock.patch.object(ext, "query_shodan_internetdb", return_value={})]
+        if osint is not None:
+            patches.append(mock.patch("ot_medeus.osint.discover", return_value=osint))
+        for p in patches:
+            p.start()
+        try:
+            res = run_workflow("test", "external", targets=targets, domain="kurum.com.tr",
+                               profile_name="thorough", enrich=False,
+                               scan_discovered=scan_discovered,
+                               osint_creds={"censys_id": "x", "censys_secret": "y"} if osint else None)
+        finally:
+            for p in patches:
+                p.stop()
+            srv.close()
+        return res, hits
+
+    def test_crtsh_ip_varsayilan_olarak_taranmaz_ama_aday_listelenir(self):
+        res, hits = self._run_with_discovery(targets=[])
+        self.assertEqual(len(hits), 0, "crt.sh'tan gelen IP izinsiz tarandı")
+        cand = {c["ip"]: c for c in res.candidates}
+        self.assertIn("127.0.0.1", cand)
+        self.assertFalse(cand["127.0.0.1"]["in_scope"])
+        self.assertFalse(cand["127.0.0.1"]["scanned"])
+        self.assertEqual(cand["127.0.0.1"]["owner_hint"], "Cloudflare")
+
+    def test_osint_ip_varsayilan_olarak_taranmaz(self):
+        res, hits = self._run_with_discovery(targets=[], subs={}, osint={"censys": ["127.0.0.1"]})
+        self.assertEqual(len(hits), 0, "Censys'ten gelen IP izinsiz tarandı")
+        self.assertIn("censys", res.candidates[0]["sources"])
+
+    def test_scan_discovered_bayragi_ile_taranir(self):
+        res, hits = self._run_with_discovery(targets=[], scan_discovered=True)
+        self.assertGreater(len(hits), 0)
+        self.assertTrue(res.candidates[0]["scanned"])
+
+    def test_kullanici_hedefindeki_aday_kapsamda_sayilir(self):
+        res, hits = self._run_with_discovery(targets=["127.0.0.1/32"])
+        self.assertGreater(len(hits), 0)
+        self.assertTrue(res.candidates[0]["in_scope"])
+
+    def test_sahip_ipucu(self):
+        self.assertEqual(ext.owner_hint("104.16.1.1", "", {}), "Cloudflare")
+        self.assertIn("Azure", ext.owner_hint("203.0.113.5", "x.azureedge.net", {}))
+        self.assertIn("CDN", ext.owner_hint("203.0.113.5", "", {"tags": ["cdn"]}))
+        self.assertEqual(ext.owner_hint("203.0.113.5", "vpn.kurum.com.tr", {}), "")
 
 
 class K3_BacnetGlobalYayin(unittest.TestCase):
@@ -179,8 +259,7 @@ class Y3_YanlisPozitifImza(unittest.TestCase):
         fake = [{"name_value": "\n".join(names)}]
         resp = mock.MagicMock()
         resp.__enter__.return_value.read.return_value = json.dumps(fake).encode()
-        with mock.patch.object(ext.urllib.request, "urlopen", return_value=resp), \
-             mock.patch.object(ext.socket, "gethostbyname", return_value="192.0.2.1"):
+        with mock.patch.object(ext.urllib.request, "urlopen", return_value=resp), _fake_resolve():
             subs = ext.fetch_crt_sh_subdomains("kurum.com.tr")
         hits = sorted(n for n, v in subs.items() if v["ot_keyword_match"])
         self.assertEqual(hits, ["bms01.kurum.com.tr", "scada.kurum.com.tr"])
@@ -213,7 +292,9 @@ class O2_HedefListesi(unittest.TestCase):
     def test_hedef_listesi_degismez(self):
         targets = ["192.0.2.0/30"]
         with mock.patch("ot_medeus.osint.discover", return_value={"censys": ["198.51.100.9"]}), \
-             mock.patch.object(ext, "run_external", return_value=([], {}, 0)):
+             mock.patch.object(ext, "fetch_crt_sh_subdomains", return_value={}), \
+             mock.patch.object(ext, "query_shodan_internetdb", return_value={}), \
+             mock.patch.object(ext, "run_external", return_value=([], 0)):
             run_workflow("t", "external", targets=targets, domain="kurum.com.tr",
                          enrich=False, osint_creds={"censys_id": "x", "censys_secret": "y"})
         self.assertEqual(targets, ["192.0.2.0/30"])

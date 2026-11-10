@@ -75,6 +75,9 @@ class ScanResult:
     parameters: dict = field(default_factory=dict)
     hosts: list[Host] = field(default_factory=list)
     subdomains: dict = field(default_factory=dict)
+    # Keşifte (crt.sh / Censys / FOFA) bulunan IP'ler. Kullanıcı açıkça istemedikçe
+    # aktif taranmazlar; bkz. scanners/external.build_candidates.
+    candidates: list[dict] = field(default_factory=list)
     total_scanned: int = 0
 
     def to_dict(self) -> dict:

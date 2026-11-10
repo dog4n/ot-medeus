@@ -79,9 +79,32 @@ def write_markdown(result: ScanResult, diff: ScanDiff | None, path: str | Path) 
             L.append(f"- [WEB PANEL] `{w.scheme.upper()}:{w.port}` | "
                      f"başlık: `{w.title}` | imza: `{w.matched_signatures}` | SSL: `{w.ssl_matches}`")
         L.append("")
+    L += _candidates_md(result)
     path = Path(path)
     path.write_text("\n".join(L), encoding="utf-8")
     return str(path)
+
+
+def _candidate_status(c: dict) -> str:
+    if c.get("scanned"):
+        return "tarandı"
+    return "kapsamda (pasif mod)" if c.get("in_scope") else "kapsam dışı — taranmadı"
+
+
+def _candidates_md(result: ScanResult) -> list[str]:
+    if not result.candidates:
+        return []
+    L = ["## Keşfedilen IP'ler (adaylar)",
+         "crt.sh / Censys / FOFA ile bulundu. Kapsam dışı olanlara paket gönderilmedi; "
+         "sahip bilgisi bir tahmindir.",
+         "",
+         "| IP | Kaynak | Olası sahip | Durum | Shodan portları |",
+         "|----|--------|-------------|-------|-----------------|"]
+    for c in result.candidates:
+        L.append(f"| `{c['ip']}` | {', '.join(c['sources'])} | {c['owner_hint'] or '—'} | "
+                 f"{_candidate_status(c)} | {c['shodan_ports'] or '—'} |")
+    L.append("")
+    return L
 
 
 def write_html(result: ScanResult, diff: ScanDiff | None, path: str | Path) -> str:
@@ -119,6 +142,22 @@ def write_html(result: ScanResult, diff: ScanDiff | None, path: str | Path) -> s
             items.append(f"<li class='warn'>{esc(ip)} yeni port: {esc(', '.join(s))}</li>")
         diff_html = f"<h2>Değişiklikler</h2><ul>{''.join(items)}</ul>"
 
+    cand_html = ""
+    if result.candidates:
+        crow = "".join(
+            f"<tr><td>{esc(c['ip'])}</td><td>{esc(', '.join(c['sources']))}</td>"
+            f"<td>{esc(c['owner_hint'] or '—')}</td><td>{esc(_candidate_status(c))}</td>"
+            f"<td>{esc(c['shodan_ports'] or '—')}</td></tr>"
+            for c in result.candidates
+        )
+        cand_html = (
+            "<h2>Keşfedilen IP'ler (adaylar)</h2>"
+            "<p class='meta'>crt.sh / Censys / FOFA ile bulundu. Kapsam dışı olanlara paket "
+            "gönderilmedi; sahip bilgisi bir tahmindir.</p>"
+            "<table><thead><tr><th>IP</th><th>Kaynak</th><th>Olası sahip</th><th>Durum</th>"
+            f"<th>Shodan portları</th></tr></thead><tbody>{crow}</tbody></table>"
+        )
+
     doc = f"""<!DOCTYPE html>
 <html lang="tr"><head><meta charset="utf-8">
 <title>OT-Medeus — {esc(result.workspace)}</title>
@@ -139,6 +178,7 @@ def write_html(result: ScanResult, diff: ScanDiff | None, path: str | Path) -> s
 <table><thead><tr><th>IP</th><th>Üretici</th><th>Tip / Purdue</th><th>MAC</th>
 <th>Servisler</th><th>Web Panel</th><th>Shodan</th><th>CVE</th></tr></thead>
 <tbody>{''.join(rows) or '<tr><td colspan=8>Bulgu yok</td></tr>'}</tbody></table>
+{cand_html}
 </body></html>"""
     path = Path(path)
     path.write_text(doc, encoding="utf-8")

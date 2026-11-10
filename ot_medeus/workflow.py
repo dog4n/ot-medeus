@@ -79,10 +79,29 @@ def run_workflow(
     enrich: bool = True,
     cve_online: bool = True,
     osint_creds: dict | None = None,
+    scan_discovered: bool = False,
 ) -> ScanResult:
+    """İş akışını çalıştırır.
+
+    Kapsam kuralı: aktif tarama yalnızca `targets` içindeki IP/CIDR'lara yapılır.
+    crt.sh / Censys / FOFA ile bulunan IP'ler `result.candidates` olarak listelenir;
+    `scan_discovered=True` verilmedikçe onlara paket gönderilmez.
+
+    Pasif kuralı: 'passive' profil hedefe hiç paket göndermez. Bu yüzden aktif iç ağ
+    taraması yapan 'internal-active' ve 'full' akışlarıyla birlikte kullanılamaz.
+    """
     profile: ScanProfile = get_profile(profile_name)
+    targets = list(targets or [])          # çağıranın listesini değiştirme
+    passive_profile = profile.name == "passive"
+    if passive_profile and workflow in ("internal-active", "full"):
+        raise ValueError(
+            "'passive' profil hedefe paket gönderemez; 'internal-active' ve 'full' akışları "
+            "aktif tarama yapar. Pasif iç ağ keşfi için 'internal-passive' kullanın."
+        )
+    if profile.rate <= 0 and not passive_profile:
+        raise ValueError("Hız limiti olmayan bir profil aktif taramada kullanılamaz.")
+    external_passive = passive_only or passive_profile
     limiter = NullLimiter() if profile.rate <= 0 else RateLimiter(profile.rate)
-    targets = targets or []
     use_nmap = engine in ("nmap", "both")
     use_native = engine in ("native", "both")
     notes: list[str] = []
@@ -90,30 +109,52 @@ def run_workflow(
     result = ScanResult(
         workspace=workspace, workflow=workflow, profile=profile.name,
         parameters={
-            "targets": targets, "domain": domain, "interface": interface,
-            "duration": duration, "passive_only": passive_only,
-            "engine": engine, "nmap_udp": nmap_udp,
+            "targets": list(targets), "domain": domain, "interface": interface,
+            "duration": duration, "passive_only": external_passive,
+            "engine": engine, "nmap_udp": nmap_udp, "scan_discovered": scan_discovered,
         },
     )
 
     if workflow in ("external", "full"):
+        # 1) Pasif keşif: hedefe dokunmaz, sadece aday üretir.
+        discovered: dict[str, set[str]] = {}
+        if domain:
+            result.subdomains = ext.fetch_crt_sh_subdomains(domain)
+            for name, info in result.subdomains.items():
+                discovered.setdefault(info["ip"], set()).add(f"crt.sh:{name}")
         if domain and osint_creds:
-            discovered = osint_mod.discover(domain, **osint_creds)
-            if discovered:
-                result.parameters["osint"] = discovered
-                for ips in discovered.values():
-                    targets.extend(ips)
-        if use_native:
-            hosts, subs, total = ext.run_external(
-                targets, profile, limiter, domain=domain, passive_only=passive_only
-            )
+            osint_hits = osint_mod.discover(domain, **osint_creds)
+            if osint_hits:
+                result.parameters["osint"] = osint_hits
+                for provider, ips in osint_hits.items():
+                    for ip in ips:
+                        discovered.setdefault(ip, set()).add(provider)
+        result.candidates = ext.build_candidates(discovered, result.subdomains, targets)
+
+        # 2) Kapsam: yalnızca kullanıcının hedefleri; adaylar sadece açıkça istenirse.
+        extra: list[str] = []
+        if scan_discovered and not external_passive:
+            extra = [c["ip"] for c in result.candidates if not c["in_scope"]]
+        for c in result.candidates:
+            c["scanned"] = (not external_passive) and (c["in_scope"] or scan_discovered)
+        skipped = [c for c in result.candidates if not c["scanned"]]
+        if skipped and not external_passive:
+            notes.append(f"{len(skipped)} keşfedilen IP kapsam dışı olduğu için taranmadı "
+                         "(aday olarak listelendi). Taramak için: --scan-discovered")
+        scan_list = targets + extra
+
+        # 3) Aktif tarama (pasif modda yalnızca Shodan InternetDB sorulur).
+        if use_native and scan_list:
+            hosts, total = ext.run_external(scan_list, profile, limiter,
+                                            passive_only=external_passive)
             result.hosts = _merge_hosts(result.hosts, hosts)
-            result.subdomains = subs
             result.total_scanned += total
-        if use_nmap and not passive_only:
-            nmap_targets = list(targets)
-            nmap_targets += [i["ip"] for i in result.subdomains.values()]
-            result.hosts = _merge_hosts(result.hosts, _run_nmap(nmap_targets, profile, nmap_udp, notes))
+        if use_nmap and scan_list:
+            if external_passive:
+                notes.append("Pasif modda nmap motoru çalıştırılmadı.")
+            else:
+                result.hosts = _merge_hosts(result.hosts,
+                                            _run_nmap(scan_list, profile, nmap_udp, notes))
 
     if workflow in ("internal-active", "full"):
         for cidr in targets:

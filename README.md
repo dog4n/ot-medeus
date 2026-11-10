@@ -44,7 +44,7 @@ ot_medeus/
   models.py        Host / Service / ScanResult veri modelleri
   scanners/
     internal.py    ARP + güvenli aktif + pasif dinleme
-    external.py    crt.sh + Shodan InternetDB + rate-limit'li aktif tarama
+    external.py    pasif keşif (crt.sh, Shodan InternetDB → aday listesi) + kapsamlı aktif tarama
   storage.py       SQLite workspace + taramalar arası diff
   report.py        JSON / Markdown / HTML rapor
   workflow.py      orkestrasyon
@@ -72,6 +72,16 @@ sudo python -m ot_medeus -w kurum_pasif -f internal-passive -i eth0 --duration 1
 sudo python -m ot_medeus -w kurum_ic -f internal-active -t 10.10.20.0/24 \
     --engine both --nmap-udp --oui-file oui.csv --profile safe
 ```
+
+### Kapsam ve pasif mod kuralları
+- **Aktif tarama yalnızca `-t` ile verdiğiniz IP/CIDR'lara yapılır.** `-d` ile crt.sh,
+  Censys ya da FOFA'dan bulunan IP'ler raporda **"Keşfedilen IP'ler (adaylar)"** tablosunda
+  olası sahip tahminiyle (Cloudflare, Microsoft 365, ...) listelenir ama paket gönderilmez.
+  Bu IP'ler çoğu zaman kuruma değil CDN/SaaS sağlayıcılarına aittir.
+- Adayları da taramak için `--scan-discovered` ekleyin — **yalnızca hepsi için yazılı
+  izniniz varsa.**
+- `--profile passive` hedefe hiç paket göndermez; bu yüzden `internal-active` ve `full`
+  akışlarıyla kullanılamaz (araç hata verir). Pasif iç ağ keşfi için `internal-passive`.
 
 Çıktılar `workspaces/<workspace>/` altında `scan_<id>.json|md|html` olarak
 üretilir; tüm geçmiş `ot_medeus.db` içinde tutulur ve her yeni tarama

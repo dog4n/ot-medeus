@@ -2,7 +2,8 @@
 
 Bu modüldeki tüm sorgular yalnızca cihazın kimliğini/varlığını doğrulamak
 içindir (Modbus Read Device ID 0x2B/0x0E, EtherNet/IP ListIdentity 0x63,
-BACnet Who-Is). Hiçbiri yazma, kontrol veya durum değiştirme işlemi yapmaz.
+BACnet tekil ReadProperty). Hiçbiri yazma, kontrol veya durum değiştirme işlemi
+yapmaz; hiçbiri yayın (broadcast) paketi değildir.
 
 Her ağ dokunuşundan önce paylaşımlı limiter.acquire() çağrılır; böylece
 OT cihazlarına giden probe hızı global olarak sınırlanır.
@@ -87,17 +88,32 @@ def probe_ethernet_ip_identity(ip: str, timeout: float, limiter: Limiter) -> str
 
 
 # ---------------------------------------------------------------------------
-# BACnet/IP: Who-Is (UDP 47808)
+# BACnet/IP: tekil ReadProperty (UDP 47808)
 # ---------------------------------------------------------------------------
+# Yalnızca hedef IP'ye giden (Original-Unicast-NPDU) okuma sorgusu: Device nesnesinin
+# (joker örnek 4194303) object-identifier özelliğini okur. NPDU hedef ağ (DNET)
+# taşımaz, bu yüzden BACnet router/BBMD'ler paketi başka ağlara yaymaz.
+# Önceki sürüm global yayın Who-Is (DNET=0xFFFF) gönderiyordu — K3.
+# Bayt dizilimi nmap bacnet-info.nse send_query() ile aynıdır
+# (github.com/nmap/nmap scripts/bacnet-info.nse, 10.11.2026'da doğrulandı).
+BACNET_READ_OBJECT_ID = bytes([
+    0x81, 0x0A, 0x00, 0x11,        # BVLC: BACnet/IP, Original-Unicast-NPDU, uzunluk 17
+    0x01, 0x04,                    # NPDU: sürüm 1, yanıt bekleniyor (DNET yok)
+    0x00, 0x05, 0x01, 0x0C,        # APDU: Confirmed-Request, max APDU 1476, invoke 1, ReadProperty
+    0x0C, 0x02, 0x3F, 0xFF, 0xFF,  # nesne: Device, örnek 4194303 (joker)
+    0x19, 0x4B,                    # özellik: object-identifier (75)
+])
+
+
 def probe_bacnet_udp(ip: str, timeout: float, limiter: Limiter) -> bool:
-    payload = bytes.fromhex("810b000c0120ffff00ff1008")  # BVLC + NPDU + Who-Is
+    """Hedef BACnet/IP cihazı mı? Yalnızca o IP'den gelen BVLC yanıtını kabul eder."""
     limiter.acquire()
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         sock.settimeout(timeout)
-        sock.sendto(payload, (ip, 47808))
-        data, _ = sock.recvfrom(512)
-        return bool(data and data[0] == 0x81)
+        sock.sendto(BACNET_READ_OBJECT_ID, (ip, 47808))
+        data, addr = sock.recvfrom(512)
+        return bool(data and data[0] == 0x81 and addr[0] == ip)
     except (OSError, socket.timeout):
         return False
     finally:

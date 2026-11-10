@@ -40,8 +40,8 @@ teknik terimi ilk geçtiği yerde bir cümleyle açıkla.
 - `passive` profil ve `--passive-only` hedefe paket gönderemez
   → Pasif modda yalnızca dinleme ve üçüncü taraf OSINT.
 - Kullanıcının vermediği IP'yi aktif tarama
-  → crt.sh / Censys / FOFA'dan gelen IP'leri sahip kapsam kararını verene kadar
-  yalnızca "aday" olarak listele (DURUM.md → Karar 1).
+  → crt.sh / Censys / FOFA'dan gelen IP'ler `result.candidates`'a "aday" olarak girer;
+  aktif tarama yalnızca `scan_discovered=True` (`--scan-discovered`) ile (sahip kararı, 10.11.2026).
 - Varsayılan profili hızlandırma → varsayılan `safe` kalır; hız yeni profil olarak eklenir.
 
 ## Kod kuralları
@@ -58,3 +58,7 @@ teknik terimi ilk geçtiği yerde bir cümleyle açıkla.
 - nmap, `--script` içinde tek bir bilinmeyen ad olsa bile taramayı başlatmadan çıkar.
 - CIRCL'in `/api/cvefor` uç noktası herkese açık sunucuda kapatılmış görünüyor.
 - 1024 altı portlar (502, 102) test için root ister; testlerde 44818 gibi portları kullan.
+- Testte sabit portlu sunucuyu sadece `close()` ile kapatma: `accept`'te bekleyen thread
+  portu tutar, sonraki test bağlanamaz → `shutdown(SHUT_RDWR)` + `close()` + `join`
+  (`tests/test_teshis.py` → `_raw_server`).
+- crt.sh testlerinde gerçek DNS'e çıkma → `socket.gethostbyname_ex`'i mock'la (`_fake_resolve`).
