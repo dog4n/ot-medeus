@@ -99,7 +99,10 @@ def _expand_hosts(target_cidr: str) -> list[str]:
     return [str(net.network_address)]
 
 
-def run_active(target_cidr: str, profile: ScanProfile, limiter: Limiter) -> list[Host]:
+def run_active(target_cidr: str, profile: ScanProfile, limiter: Limiter,
+               errors: list[str] | None = None) -> list[Host]:
+    """Subnet'i tarar. Bir cihazda beklenmeyen hata olursa o cihaz atlanır, tarama sürer;
+    hata `errors` listesine (workflow notları) yazılır (Y1)."""
     hosts = _expand_hosts(target_cidr)
     mac_map = arp_discover(target_cidr, profile.timeout)
     found: list[Host] = []
@@ -109,7 +112,13 @@ def run_active(target_cidr: str, profile: ScanProfile, limiter: Limiter) -> list
             for ip in hosts
         }
         for fut in as_completed(futures):
-            host = fut.result()
+            try:
+                host = fut.result()
+            except Exception as e:  # noqa: BLE001 — tek cihaz tüm taramayı düşürmesin
+                if errors is not None:
+                    errors.append(f"{futures[fut]} taranırken hata, cihaz atlandı: "
+                                  f"{type(e).__name__}: {e}")
+                continue
             if host.is_ot_candidate:
                 found.append(host)
     return found

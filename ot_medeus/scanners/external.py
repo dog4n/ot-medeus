@@ -276,10 +276,12 @@ def _expand_targets(raw: list[str]) -> list[str]:
 
 
 def run_external(targets: list[str], profile: ScanProfile, limiter: Limiter,
-                 passive_only: bool = False) -> tuple[list[Host], int]:
+                 passive_only: bool = False,
+                 errors: list[str] | None = None) -> tuple[list[Host], int]:
     """Yalnızca verilen hedefleri tarar. Keşif (crt.sh/OSINT) burada YAPILMAZ.
 
     passive_only=True iken hedefe paket gitmez; sadece Shodan InternetDB sorulur.
+    Bir IP'de beklenmeyen hata olursa o IP atlanır, hata `errors`'a yazılır (Y1).
     Dönüş: (bulunan hostlar, taranan IP sayısı).
     """
     ip_list = _expand_targets(list(targets))
@@ -287,7 +289,13 @@ def run_external(targets: list[str], profile: ScanProfile, limiter: Limiter,
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, profile.threads)) as ex:
         futures = {ex.submit(scan_ip, ip, profile, limiter, passive_only): ip for ip in ip_list}
         for fut in concurrent.futures.as_completed(futures):
-            host = fut.result()
+            try:
+                host = fut.result()
+            except Exception as e:  # noqa: BLE001 — tek IP tüm taramayı düşürmesin
+                if errors is not None:
+                    errors.append(f"{futures[fut]} taranırken hata, IP atlandı: "
+                                  f"{type(e).__name__}: {e}")
+                continue
             if host.is_ot_candidate or host.shodan.get("ports"):
                 found.append(host)
     return found, len(ip_list)

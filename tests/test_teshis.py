@@ -26,6 +26,7 @@ from ot_medeus import classify, probes  # noqa: E402
 from ot_medeus.models import Host, Service  # noqa: E402
 from ot_medeus.ratelimit import NullLimiter  # noqa: E402
 from ot_medeus.scanners import external as ext  # noqa: E402
+from ot_medeus.scanners import internal as intl  # noqa: E402
 from ot_medeus.scanners import nmap_ics  # noqa: E402
 from ot_medeus.workflow import _merge_hosts, run_workflow  # noqa: E402
 
@@ -220,6 +221,31 @@ class Y1_HttpCokmesi(unittest.TestCase):
             self.fail(f"yakalanmayan hata: {type(e).__name__}")
         finally:
             srv.close()
+
+    @staticmethod
+    def _flaky(bad_ip):
+        """bad_ip için patlayan, diğerleri için OT host dönen sahte tarayıcı."""
+        def scan(ip, *a, **k):
+            if ip == bad_ip:
+                raise RuntimeError("beklenmeyen cihaz yanıtı")
+            return Host(ip=ip, is_ot_candidate=True)
+        return scan
+
+    def test_ic_ag_tek_cihaz_hatasi_taramayi_dusurmez(self):
+        with mock.patch.object(intl, "arp_discover", return_value={}), \
+             mock.patch.object(intl, "scan_host", side_effect=self._flaky("127.0.0.1")):
+            res = run_workflow("t", "internal-active", targets=["127.0.0.1/32", "127.0.0.2/32"],
+                               profile_name="thorough", enrich=False)
+        self.assertEqual([h.ip for h in res.hosts], ["127.0.0.2"])
+        self.assertTrue(any("127.0.0.1" in n for n in res.parameters.get("notes", [])),
+                        "hata kullanıcıya not olarak bildirilmeli")
+
+    def test_dis_ag_tek_cihaz_hatasi_taramayi_dusurmez(self):
+        with mock.patch.object(ext, "scan_ip", side_effect=self._flaky("127.0.0.1")):
+            res = run_workflow("t", "external", targets=["127.0.0.1", "127.0.0.2"],
+                               profile_name="thorough", enrich=False)
+        self.assertEqual([h.ip for h in res.hosts], ["127.0.0.2"])
+        self.assertTrue(any("127.0.0.1" in n for n in res.parameters.get("notes", [])))
 
 
 class Y2_NmapScriptleri(unittest.TestCase):

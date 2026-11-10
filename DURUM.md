@@ -1,6 +1,6 @@
 # DURUM — Devir Notu
 
-**Son güncelleme:** 10.11.2026 · **Kod sürümü:** 0.4.1 + K1–K3 düzeltmeleri
+**Son güncelleme:** 10.11.2026 · **Kod sürümü:** 0.4.1 + K1–K3, Y1 düzeltmeleri
 **Repo:** https://github.com/dog4n/ot-medeus (özel, Claude'a bağlı) · **Mac kopyası:** ~/Documents/ot-medeus (git klonu değil; değişiklikler elle senkronlanıyor)
 
 ## Kurulumlar
@@ -11,9 +11,10 @@
   Buluttan yalnızca `external` akışı anlamlı (iç ağ akışları hedef ağın içinden çalışmalı).
 
 ## Nerede kaldık
-- Teşhis: 14 bulgu (aşağıda). `tests/test_teshis.py`: 19 test → **11 yeşil, 8 kırmızı**.
-  Kırmızı = bulgu hâlâ açık (B1, Y1–Y4).
-- **Kapatılanlar (10.11.2026):** K1, K2, K3 ve yan etki olarak O2.
+- Teşhis: 14 bulgu (aşağıda). `tests/test_teshis.py`: 21 test → **14 yeşil, 7 kırmızı**.
+  Kırmızı = bulgu hâlâ açık (B1, Y2–Y4).
+- **Kapatılanlar (10.11.2026):** K1, K2, K3, Y1 ve yan etki olarak O2.
+  - Y1: HTTP olmayan servis artık "web paneli değil" sayılıp geçiliyor. Ayrıca iç/dış taramada bir cihazdaki beklenmeyen hata yalnızca o cihazı atlatıyor; hata raporun notlarına yazılıyor, tarama sürüyor.
   - K1: `passive` profil artık hedefe paket göndermiyor; `internal-active`/`full` ile kullanılınca araç hata veriyor. Dış taramada BACnet/SSL sorguları `enable_probes`'a uyuyor.
   - K2: Aktif tarama yalnızca `-t` hedeflerine. crt.sh/Censys/FOFA IP'leri raporda "adaylar" tablosunda olası sahip tahminiyle (Cloudflare aralıkları, CNAME sonekleri, Shodan etiketi) listeleniyor; `--scan-discovered` ile açıkça taranabiliyor. Domain eşleşmesi düzeltildi (`notkurum.com.tr` artık alınmıyor).
   - K3: BACnet sorgusu global yayın Who-Is yerine hedefe tekil ReadProperty (nmap bacnet-info ile aynı bayt dizilimi); yalnızca hedef IP'den gelen yanıt kabul ediliyor.
@@ -22,7 +23,6 @@
 ## Açık bulgular (öncelik sırasıyla)
 | ID | Bulgu | Kanıt | Test |
 |----|-------|-------|------|
-| **Y1** | Web portunda HTTP olmayan tek bir servis (`BadStatusLine`) tüm taramayı çökertiyor, hiçbir sonuç kaydedilmiyor. | uçtan uca tarama çöktü | Y1 |
 | **Y2** | nmap motoru hiç sonuç vermiyor: `modicon-info` resmi nmap'te yok → nmap çıkar, kod hatayı yutar. | nmap repo + `nse_main.lua` | Y2 |
 | **Y3** | Yanlış pozitif imzalar: Priva→privacy, Ovation→innovation, Digi→DigiCert, SEL-→carousel-, NJ, Milestone. Alt alan kelimeleri de: ot→hotmail, su→support, gen→agent, ups→groups. | örnek sayfa/alt alanlar | Y3 |
 | **Y4** | Sınıflandırma: 2404 (IEC-104) RTU yerine HMI çıkıyor; yanıt vermeyen Modbus portu "yüksek" güven alıyor; nmap'in bulduğu üretici "Bilinmiyor" ile eziliyor. | doğrudan çağrı | Y4 |
@@ -42,6 +42,6 @@
 2. **Diff kapsamı (O3):** workspace bazında mı, workspace + akış + hedef bazında mı?
 
 ## Sıradaki işler
-1. Y1–Y4 düzelt; Y5 için karar 1 bekleniyor.
+1. Y2–Y4 düzelt; Y5 için karar 1 bekleniyor.
 2. O1, O3, O4; sonra B1–B2.
 3. Tüm testler yeşil olunca: Osmedeus SaaS'a modül olarak bağlama.

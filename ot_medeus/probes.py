@@ -11,6 +11,7 @@ OT cihazlarına giden probe hızı global olarak sınırlanır.
 
 from __future__ import annotations
 
+import http.client
 import re
 import socket
 import ssl
@@ -195,7 +196,9 @@ def probe_http_service(ip: str, port: int, timeout: float, limiter: Limiter) -> 
         info["matched_signatures"] = sorted(
             {s.strip() for s in OT_SIGNATURES if s.strip().lower() in hay}
         )
-    except (OSError, socket.timeout, ssl.SSLError, ValueError):
+    except (OSError, socket.timeout, ssl.SSLError, ValueError, http.client.HTTPException):
+        # HTTPException: portta HTTP olmayan bir servis var (BadStatusLine, IncompleteRead,
+        # LineTooLong...). Web paneli değil; taramayı düşürmeden geç (Y1).
         return None
 
     if any((info["server_header"], info["title"], info["matched_signatures"], info["ssl_matches"])):

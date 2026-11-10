@@ -146,7 +146,7 @@ def run_workflow(
         # 3) Aktif tarama (pasif modda yalnızca Shodan InternetDB sorulur).
         if use_native and scan_list:
             hosts, total = ext.run_external(scan_list, profile, limiter,
-                                            passive_only=external_passive)
+                                            passive_only=external_passive, errors=notes)
             result.hosts = _merge_hosts(result.hosts, hosts)
             result.total_scanned += total
         if use_nmap and scan_list:
@@ -159,7 +159,8 @@ def run_workflow(
     if workflow in ("internal-active", "full"):
         for cidr in targets:
             if use_native:
-                result.hosts = _merge_hosts(result.hosts, intl.run_active(cidr, profile, limiter))
+                result.hosts = _merge_hosts(result.hosts,
+                                            intl.run_active(cidr, profile, limiter, errors=notes))
             if use_nmap:
                 result.hosts = _merge_hosts(result.hosts, _run_nmap([cidr], profile, nmap_udp, notes))
             result.total_scanned += 1
